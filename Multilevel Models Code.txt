@@ -1,0 +1,103 @@
+################################################################################
+#                                                                              #
+#   Jonathan D. Ware                                                           #
+#   Advanced Regression Modeling                                               #
+#   Multilevel Models                               			       #
+#                                                                              #   
+################################################################################
+
+#o. Need to setup data
+
+setwd("C:/ARM")
+
+library(haven)
+library(RCurl)
+library(gplots)
+library(plm)
+library(lme4)
+library(MASS)
+library(dplyr)
+
+myd <- read_dta("Multilevel.dta")
+View(myd)
+str(myd)
+attach(myd)
+
+#Familiarize self with variables of interest
+
+summary(math)
+summary(ses)
+summary(sex) #1=male
+table(sex)
+summary(white)
+table(white) #1=white
+
+#Helps to visualize
+
+plotmeans(math ~ schoolid, main="Math Scores Across Schools", data=myd)
+plotmeans(math ~ race, main="Math Scores Across Race/Ethnicty", data=myd)
+plotmeans(math ~ sex, main="Math Scores Across Gender", data=myd)
+plot(ses, math, pch=19, xlab="SES", ylab="Math Score",abline(lm(math~ses),lwd=3,
+                                                             col="red"))
+detach("package:gplots")
+
+#1. Run simple OLS regression on math with terms for SES, Gender, Race
+
+mod1<-lm(math~ses+sex+white)
+summary(mod1)
+yhat <-mod1$fitted
+
+
+#2. Run model again with robust standard errors for clustering by schools
+
+summary(mod1, cluster = c("schoolid"))
+
+#3. Next, run equation as between-effects, fixed-effect, random-effects models
+
+fixed <- plm(math~ses+sex+white,data=myd,index=c("schoolid"), model="within")
+bet <- plm(math~ses+sex+white,data=myd,index=c("schoolid"), model="between")
+ran <- plm(math~ses+sex+white,data=myd,index=c("schoolid"), model="random")
+summary(fixed)
+summary(bet)
+summary(ran)
+
+#4. Now, let's run Hausman test to compare fixed and random effects models
+
+phtest(fixed,ran)#one of our models is inconsistent, random effects model may be
+                 #biased
+
+#5. Add level-2 variable for school mean ses and school size
+
+#First, find mean values for each school
+
+by_school <- myd %>% group_by(schoolid)
+by_school %>% summarise(
+              n = n(),
+              ses = mean(ses, na.rm = TRUE)
+              )
+#Create variable for each school...just realized meanses is already provided. Whoops
+#Let's run model with level-2 terms
+
+fix2 <- plm(math ~ ses + sex + white + meanses + schoolsize, data=myd, index=
+              c("schoolid"), model = "within")
+summary(fix2)
+
+ran2 <- plm(math ~ ses + meanses + schoolsize, data=myd, index=
+              c("schoolid"), model = "random")
+fixef(fix2) #fixed effects for each school
+pFtest(fix2,mod1)#fixed effect model better fit 
+
+# plm is having issues running random effect model with level-2 terms, let's try
+# lme function in nlme package instead
+
+mod2 <- lme( fixed = math~ses + sex + white + meanses +schoolsize, random = ~1|schoolid, data = myd)
+summary(mod2)
+
+#7. Next, let's run a random coefficients model, allowing the coefficients to
+#   vary across schools
+rcof <- lmer(math ~ ses + (1+ses|schoolid), data = myd) #1+x is used to include
+                                                        #both a random intercept
+                                                        #and slope. Specify 0 if
+                                                        #you don't want random
+                                                        #intercepts
+summary(rcof)

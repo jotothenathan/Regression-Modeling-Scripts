@@ -1,0 +1,119 @@
+################################################################################
+#                                                                              #
+#   Jonathan D. Ware                                                           #
+#   Advanced Regression Modeling                                               #
+#   Multinomial Logistic Regression 					       #
+#                                                                              #   
+################################################################################
+
+#o. Need to setup data
+
+setwd("C:/Fall 2020 Lab Material/ARM")
+library(haven)
+
+myd<- read_dta("Multinomial.dta")
+View(myd)
+str(myd)
+
+#Next, install needed packages to run MLR models
+
+install.packages(c("foreign","nnet","ggplot2", "reshape2"))
+library(foreign)
+library(nnet)
+library(ggplot2)
+library(reshape2)
+
+#1. Examine variables of interest
+
+attach(myd)
+religid
+summary(religid)
+table(religid)
+summary(educ)
+table(educ)
+
+#No missing values so no need to remove NA cases
+
+#Further examine religid and educ
+
+xtabs(~educ+religid)
+with(myd, do.call(rbind, tapply(educ, religid, function(x) c(M=mean(x), SD=sd(x)
+                                                             ))))
+
+#2. Using multinom function in nnet to run MLR model
+
+#First, need to specify reference group. In this case, 3=mainline
+
+myd$religid2 <- relevel(myd$rid, ref = 3)
+myd$rid<-as.factor(myd$religid)
+
+#Next, setup basic model
+
+mod1 <- multinom(religid2 ~ educ, data = myd)
+
+#model converged
+
+summary(mod1)
+
+#Need to calculate z-score to find p-value for coefficients
+
+z1<-summary(mod1)$coefficients/summary(mod1)$standard.errors
+z1	#check
+
+#Calculate p-value
+
+p1 <- (1-pnorm(abs(z1),0,1))*2
+p1
+
+#3. Now, run more complex model with added predictor variables
+
+summary(dfemale)
+mod2 <- multinom(religid2 ~ educ + income + dfemale + age + attend, data = myd)
+
+#model converged
+summary(mod2)
+
+#Again, calculate z-score to obtain p-value
+
+z2<-summary(mod2)$coefficients/summary(mod2)$standard.errors
+p2 <- (1-pnorm(abs(z2),0,1))*2
+
+#Next, need to calculate relative risk ratio (rrr) by exponentiating coefficient
+
+exp(coef(mod2))
+
+#4. Run new model with baseline set to fundamentalist (religid=1)
+
+myd$religid3 <- relevel(myd$rid, ref = 1)
+mod3 <- multinom(religid3 ~ educ + income + dfemale + age + attend, data = myd)
+
+#model converged
+
+summary(mod3)
+z3<-summary(mod3)$coefficients/summary(mod3)$standard.errors
+p3 <- (1-pnorm(abs(z3),0,1))*2
+
+#Get rrr
+exp(coef(mod3))
+
+#5. Compare binary logistic regression model to MLR
+
+#First, need to generate new variable, "fundvmain"
+
+myd$fundvmain <- NA
+myd$fundvmain[myd$religid==1] <- 1
+myd$fundvmain[myd$religid==2] <- NA
+myd$fundvmain[myd$religid==3] <- 0
+myd$fundvmain[myd$religid==4] <- NA
+
+#check variable
+
+table(myd$fundvmain)
+table(myd$religid)
+
+#Looks good, time to run binary logistic model using glm
+
+mod4 <- glm(fundvmain ~ educ + income + dfemale + age + attend, data = myd, 
+            family = binomial)
+summary(mod4)
+exp(coef(mod4))

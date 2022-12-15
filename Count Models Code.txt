@@ -1,0 +1,119 @@
+################################################################################
+#                                                                              #
+#   Jonathan D. Ware                                                           #
+#   Advanced Regression Modeling                                               #
+#   Count Models                                      			       #
+#                                                                              #   
+################################################################################
+
+#0. Setup working environment
+
+setwd("C:/ARM")
+library(haven)
+library(sandwich)
+library(MASS)
+library(foreign)
+library(pscl)
+library(boot)
+
+# Import Data
+Count_Data <- read_dta("Count Data.dta")
+View(Count_Data)
+
+
+#1. Descriptives for DV and IVs
+
+#DV: Org memberships
+
+attach(Count_Data)
+summary(memnum)
+ftable(memnum)
+hist(memnum)
+mean(memnum)
+var(memnum)
+
+#IVs: Age; educ; income; employment; religious participation; TV
+
+summary(age);summary(educ);summary(income);summary(attend);summary(tvhours)
+ftable(age);ftable(educ);ftable(income);ftable(attend);ftable(tvhours)
+hist(age);hist(educ);hist(income);hist(attend);hist(tvhours)
+
+#2. Run poisson regression with IVs on memnum
+
+mod1 <- glm(memnum ~ age + dmale + educ + income + empfull + attend + married + 
+              emppart + tvhours, family="poisson", data=Count_Data)
+summary(mod1)
+
+#Test goodness of fit
+
+with(mod1, cbind(res.deviance = deviance, df = df.residual,
+               p = pchisq(deviance, df.residual, lower.tail=FALSE)))
+
+#Wow, that's a bad fit
+
+#3. Now, run a negative binomial model with same terms
+
+mod2 <- glm.nb(memnum ~ age + dmale + educ + income + empfull + attend + married
+               + emppart + tvhours, data = Count_Data)
+summary(mod2)
+
+#Use 'odtest' from pscl package to run likelihood ratio test
+
+odTest(mod2, alpha=.05, digits = max(3, getOption("digits") - 3))
+
+#Further evidence of a poor fit
+
+#Compare coefficients from both models
+
+comp <- cbind(coef(mod1), coef(mod2))
+comp
+exp(comp)
+
+#4. Next, lets exponentiate model coefficients to determine incidence rate ratio
+
+mest <- cbind(Estimate = coef(mod2), confint(mod2))#create table object for
+                                                   #easier comparisons
+exp(mest)
+
+#5. Generate predicted count for theoretical person
+
+pdata.1 = data.frame(educ = 12, age = 20, income = 10, dmale = 1, empfull = 1, 
+                   emppart=0,married = 1, attend = 2, tvhours = 2)
+pdata.1 #check
+
+#Predict count
+
+predict(mod2, newdata = pdata.1, type = "response") #value = 1.178
+
+#Generate new count for someone with 8 years of education; 16 years
+pdata.2 <- data.frame(educ = 8, age = 20, income = 10, dmale = 1, empfull = 1, 
+                      emppart=0,married = 1, attend = 2, tvhours = 2)
+pdata.3 <- data.frame(educ = 16, age = 20, income = 10, dmale = 1, empfull = 1, 
+                      emppart=0,married = 1, attend = 2, tvhours = 2)
+predict(mod2, newdata = pdata.2, type = "response",se.fit = T) #value = 0.7631
+predict(mod2, newdata = pdata.3, type = "response",se.fit = T) #value = 1.8200
+
+#6. Predict with all terms equal to mean with variation along tvhours
+
+ftable(tvhours)
+pdata.4 <- data.frame(educ=mean(educ), age=mean(age), income=mean(income), 
+                       dmale=mean(dmale), empfull=mean(empfull), emppart = mean
+                       (emppart), married=mean(married), attend=mean(attend), 
+                      tvhours = rep(seq(from =min(tvhours), to = max(tvhours))))
+
+predict(mod2, newdata = pdata.4, type = "response",se.fit = T) 
+
+#7. Run zero inflated negative binomial model with the same terms
+
+mod3 <- zeroinfl(memnum ~ age + dmale + educ + income + empfull + emppart + 
+                attend + married + tvhours | age + dmale + educ + income + 
+                emppart + empfull + attend + married + tvhours, data = 
+                Count_Data, dist = "negbin")
+summary(mod3)
+
+#Compare exponentiated coefficients
+
+expCoef <- exp(coef((mod3)))
+expCoef <- matrix(expCoef, ncol = 2)
+rownames(expCoef) <- names(coef(mod2))
+expCoef
