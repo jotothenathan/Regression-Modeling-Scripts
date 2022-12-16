@@ -8,7 +8,7 @@
 
 #o. Need to setup data
 
-setwd("C:/Fall 2020 Lab Material/ARM")
+setwd("C:/ARM")
 library(haven)
 
 myd<- read_dta("Multinomial.dta")
